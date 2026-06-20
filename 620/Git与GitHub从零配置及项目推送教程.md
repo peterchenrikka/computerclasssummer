@@ -30,6 +30,7 @@
 12. [常见错误和解决办法](#十二常见错误和解决办法)
 13. [安全注意事项](#十三安全注意事项)
 14. [一页式速查表](#十四一页式速查表)
+15. [本次失败过程复盘与最终解决方案](#十五本次失败过程复盘与最终解决方案)
 
 ---
 
@@ -1219,6 +1220,498 @@ git status --short --branch
 git remote -v
 git log --oneline --decorate -5
 ```
+
+---
+
+## 十五、本次失败过程复盘与最终解决方案
+
+这一章专门记录本项目从“电脑没有可用 Git”到“成功推送 GitHub”的完整失败过程。
+
+这部分非常重要，因为实际操作通常不会像标准教程那样一次成功。以后换电脑时，如果再次遇到类似问题，可以先对照本章判断：到底是代码问题、Git 配置问题、登录问题，还是网络问题。
+
+### 1. 最终结论先说
+
+本次失败的主要原因不是 Python 文件，也不是 Git 提交内容，而是下面三个环境问题叠加：
+
+1. 最开始电脑没有可直接调用的 Git 和 GitHub CLI。
+2. 安装 Git 后，已经打开的 VS Code 没有立刻读取新的 `PATH`。
+3. 当前网络不能正常连接 HTTPS 的 `github.com:443`，导致 GitHub 登录和 HTTPS 推送超时。
+
+最后成功的方案是：
+
+```text
+安装 Git
+    ↓
+配置 Git 用户名和邮箱
+    ↓
+初始化本地仓库并创建 Initial commit
+    ↓
+创建 GitHub 仓库
+    ↓
+生成 SSH 密钥并把公钥添加到 GitHub
+    ↓
+放弃无法连接的 HTTPS 地址
+    ↓
+改用 ssh.github.com 的 SSH 443 端口
+    ↓
+成功推送 main 分支
+```
+
+最终使用的远程地址：
+
+```text
+ssh://git@ssh.github.com:443/peterchenrikka/computerclasssummer.git
+```
+
+最终使用的项目 SSH 配置：
+
+```text
+ssh -i C:/Users/Lenovo/.ssh/id_ed25519_github -o IdentitiesOnly=yes
+```
+
+### 2. 失败过程总表
+
+| 阶段 | 看到的现象或错误 | 真正原因 | 最后怎么处理 |
+| --- | --- | --- | --- |
+| 检查环境 | `git` 无法识别 | Git 没安装或不在 PATH | 安装便携版 Git 并加入用户 PATH |
+| 检查 GitHub 工具 | `gh` 无法识别 | GitHub CLI 没安装 | 下载并安装 GitHub CLI |
+| 下载 Git | 官方 GitHub 下载超时 | 当前网络连接 GitHub 下载地址很慢 | 改用国内镜像下载 Git for Windows |
+| 安装后使用 | 当前终端仍找不到 Git | VS Code 是安装前启动的，没有读取新 PATH | 完全退出并重新打开 VS Code |
+| 初始化仓库 | 看见 `.git`，但提示 `not a git repository` | `.git` 只是失败操作留下的空目录，不是完整仓库 | 删除空目录并重新执行 `git init -b main` |
+| GitHub CLI 登录 | `gh auth status` 显示未登录 | 令牌或网页授权没有成功保存 | 不再依赖 GitHub CLI 登录，改用 SSH |
+| 网页设备授权 | 请求 `github.com/login/device/code` 超时 | 当前网络无法稳定连接 `github.com:443` | 放弃设备登录流程 |
+| HTTPS 推送 | `Failed to connect to github.com port 443` | 网络问题，不是用户名、提交或仓库地址格式问题 | 改用 SSH 443 通道 |
+| 第一次 SSH 测试 | `Permission denied (publickey)` | 电脑还没有可被 GitHub 识别的 SSH 密钥 | 生成 Ed25519 密钥并添加公钥 |
+| 添加 SSH Key | `Key is invalid` | 剪贴板内容不完整或包含了错误内容 | 重新读取 `.pub` 文件、去掉首尾空白并复制整行 |
+| 最后推送 | 出现 `main -> main` | SSH 认证、远程地址和提交都正确 | 推送成功 |
+
+### 3. 第一次失败：电脑找不到 git 和 gh
+
+最开始运行：
+
+```powershell
+git --version
+gh --version
+```
+
+终端提示无法识别 `git` 和 `gh`。
+
+这表示命令行根本找不到这两个程序。此时继续执行 `git init`、`git commit` 或 `git push` 都不会成功。
+
+#### 当时的处理
+
+Git 被安装到：
+
+```text
+C:\Users\Lenovo\AppData\Local\Programs\MinGit
+```
+
+Git 的命令目录被加入用户 PATH：
+
+```text
+C:\Users\Lenovo\AppData\Local\Programs\MinGit\cmd
+```
+
+然后验证：
+
+```powershell
+git --version
+```
+
+成功输出：
+
+```text
+git version 2.54.0.windows.1
+```
+
+#### 学到的经验
+
+安装软件不代表已经打开的终端马上能使用它。PATH 改变后，最稳妥的操作是完全退出 VS Code，再重新打开。
+
+### 4. 第二次失败：官方 GitHub 下载超时
+
+最开始尝试从 GitHub 官方 Release 下载便携版 Git 和 GitHub CLI，但下载长时间没有完成，最终超时。
+
+这不是安装包损坏，而是当前网络访问 GitHub Release 不稳定。
+
+#### 当时的处理
+
+Git for Windows 改用国内镜像下载，速度恢复正常。GitHub CLI 后来从官方发布地址下载完成，只是速度较慢。
+
+#### 以后怎么做
+
+在新电脑上，优先使用：
+
+```powershell
+winget install --id Git.Git -e --source winget
+```
+
+或者直接打开 Git 官方安装页：
+
+```text
+https://git-scm.com/install/windows
+```
+
+这样比手动处理便携版更适合普通使用。
+
+### 5. 第三次失败：有 `.git` 文件夹，却不是 Git 仓库
+
+项目中一度出现了一个空的 `.git` 目录，但运行：
+
+```powershell
+git status
+```
+
+仍然提示：
+
+```text
+fatal: not a git repository (or any of the parent directories): .git
+```
+
+#### 真正原因
+
+一个有效的 `.git` 目录里面应该有 `HEAD`、`config`、`objects`、`refs` 等内容。只有一个空目录，不代表仓库初始化成功。
+
+#### 当时的处理
+
+确认 `.git` 是失败操作留下的空目录后，将它清理，然后重新运行：
+
+```powershell
+git init -b main
+```
+
+接着运行：
+
+```powershell
+git add --all
+git commit -m "Initial commit"
+```
+
+最终创建了第一次提交：
+
+```text
+58255b7 Initial commit
+```
+
+#### 重要提醒
+
+以后不要看到 `.git` 有问题就直接删除。只有在百分之百确认它是空目录或无用的失败残留时才能清理。正常项目中的 `.git` 保存全部版本历史，删掉会造成严重损失。
+
+### 6. 第四次失败：GitHub CLI 一直没有登录成功
+
+安装 GitHub CLI 后运行：
+
+```powershell
+gh auth status
+```
+
+仍然显示：
+
+```text
+You are not logged into any GitHub hosts.
+```
+
+后来尝试网页设备授权，GitHub CLI 需要访问：
+
+```text
+https://github.com/login/device/code
+```
+
+但请求超时。
+
+#### 真正原因
+
+问题不在账号密码，而是终端无法稳定连接 `github.com:443`。设备授权的第一步就无法完成，所以授权信息当然不会保存。
+
+#### 为什么没有继续折腾 Token
+
+Token 必须谨慎保管，不能粘贴到聊天或提交进仓库。既然 SSH 443 可以连接，就没有必要继续让 Token 登录流程变得更复杂。
+
+最后选择 SSH，是更适合当前网络的方案。
+
+### 7. 第五次失败：HTTPS push 超时
+
+当时远程地址是：
+
+```text
+https://github.com/peterchenrikka/computerclasssummer.git
+```
+
+运行：
+
+```powershell
+git push -u origin main
+```
+
+出现错误：
+
+```text
+fatal: unable to access 'https://github.com/peterchenrikka/computerclasssummer.git/':
+Failed to connect to github.com port 443 after 21093 ms:
+Could not connect to server
+```
+
+#### 如何判断这不是代码问题
+
+错误发生在“连接服务器”阶段，关键词是：
+
+```text
+Failed to connect
+port 443
+Could not connect to server
+```
+
+它没有说提交冲突、分支不存在或仓库权限不足。因此：
+
+- `helloword.py` 没问题；
+- `git commit` 没问题；
+- `main` 分支没问题；
+- 失败点在网络连接。
+
+修改 Python 代码、重新 `git add` 或重新 `git commit` 都解决不了这个错误。
+
+### 8. 寻找替代通道：测试 SSH 443
+
+GitHub 除了 HTTPS，还提供 SSH。标准 SSH 使用 22 端口，但 GitHub 也支持通过 `ssh.github.com` 的 443 端口连接。
+
+测试命令：
+
+```powershell
+ssh -T -p 443 git@ssh.github.com
+```
+
+当时服务器可以连接，但返回：
+
+```text
+Permission denied (publickey).
+```
+
+这个错误反而是一个有用的进展：
+
+- 能收到 GitHub SSH 服务器的回复，说明网络通道是通的；
+- `publickey` 失败只表示还没有正确配置 SSH 密钥。
+
+所以接下来的任务从“解决网络”变成了“配置密钥”。
+
+### 9. 第六次失败：GitHub 说 SSH Key 无效
+
+创建密钥后，第一次往 GitHub 的 SSH Key 页面粘贴内容时，网页提示：
+
+```text
+Key is invalid. You must supply a key in OpenSSH public key format
+```
+
+#### 真正原因
+
+GitHub 要求粘贴 `.pub` 公钥文件的一整行。第一次剪贴板可能没有正确同步，或者内容中混入了多余字符。
+
+#### 最终正确的复制方法
+
+```powershell
+$pub = (Get-Content -Raw "$HOME\.ssh\id_ed25519_github.pub").Trim()
+$pub | Set-Clipboard
+$pub
+```
+
+然后检查输出：
+
+- 必须以 `ssh-ed25519` 开头；
+- 中间是一段 Base64 字符；
+- 最后可以带邮箱备注；
+- 整个公钥是一行；
+- 不能粘贴没有 `.pub` 后缀的私钥。
+
+重新复制正确公钥后，GitHub 接受了这把密钥。
+
+### 10. 最终解决方案：SSH 密钥加 SSH 443
+
+#### 第一步：生成专用 SSH 密钥
+
+```powershell
+ssh-keygen -t ed25519 -C "peterchenrikka@gmail.com" -f "$HOME\.ssh\id_ed25519_github"
+```
+
+生成的文件：
+
+```text
+C:\Users\Lenovo\.ssh\id_ed25519_github
+C:\Users\Lenovo\.ssh\id_ed25519_github.pub
+```
+
+#### 第二步：复制并添加公钥
+
+```powershell
+(Get-Content -Raw "$HOME\.ssh\id_ed25519_github.pub").Trim() | Set-Clipboard
+```
+
+添加页面：
+
+```text
+https://github.com/settings/ssh/new
+```
+
+#### 第三步：验证 GitHub SSH 身份
+
+```powershell
+ssh -i "$HOME\.ssh\id_ed25519_github" -o IdentitiesOnly=yes -T -p 443 git@ssh.github.com
+```
+
+成功输出：
+
+```text
+Hi peterchenrikka! You've successfully authenticated, but GitHub does not provide shell access.
+```
+
+注意：`ssh -T` 在这个场景中可能返回退出码 1，但只要明确出现 `successfully authenticated`，身份验证就是成功的。GitHub 返回非零退出码，是因为它不提供普通 SSH Shell，并不代表密钥失败。
+
+#### 第四步：把远程地址从 HTTPS 改成 SSH 443
+
+```powershell
+git remote set-url origin ssh://git@ssh.github.com:443/peterchenrikka/computerclasssummer.git
+```
+
+#### 第五步：强制本项目使用正确私钥
+
+```powershell
+git config core.sshCommand "ssh -i C:/Users/Lenovo/.ssh/id_ed25519_github -o IdentitiesOnly=yes"
+```
+
+#### 第六步：检查配置
+
+```powershell
+git remote -v
+git config --get core.sshCommand
+```
+
+应该看到：
+
+```text
+origin  ssh://git@ssh.github.com:443/peterchenrikka/computerclasssummer.git
+ssh -i C:/Users/Lenovo/.ssh/id_ed25519_github -o IdentitiesOnly=yes
+```
+
+#### 第七步：再次推送
+
+```powershell
+git push -u origin main
+```
+
+最终成功输出包含：
+
+```text
+branch 'main' set up to track 'origin/main'.
+To ssh://ssh.github.com:443/peterchenrikka/computerclasssummer.git
+ * [new branch]      main -> main
+```
+
+#### 第八步：比较本地与远程提交
+
+```powershell
+git rev-parse HEAD
+git ls-remote origin refs/heads/main
+```
+
+当时两边都是：
+
+```text
+58255b7d85c5e5b5d7e42e353e1207e5c62c46fd
+```
+
+这证明 GitHub 上的 `main` 和本地 `main` 指向同一个提交，项目确实推送成功，而不是只在本地显示成功。
+
+### 11. 为什么最后这个方案能成功
+
+HTTPS 方案连接的是：
+
+```text
+github.com:443
+```
+
+最终 SSH 方案连接的是：
+
+```text
+ssh.github.com:443
+```
+
+它们虽然都使用 443 端口，但使用的主机和协议不同。当前网络到第一个地址失败，到第二个地址成功，因此更换通道解决了网络阻塞。
+
+SSH 密钥又解决了身份认证问题：
+
+```text
+网络通道：ssh.github.com:443
+身份凭据：id_ed25519_github 私钥
+GitHub 账号：保存了对应公钥
+仓库地址：peterchenrikka/computerclasssummer
+```
+
+这四项全部正确，`git push` 才最终成功。
+
+### 12. 以后再次遇到 push 失败，按这个顺序排查
+
+不要看到失败就反复执行 `git push`。按下面顺序检查，能更快找到问题。
+
+#### 第一步：确认本地仓库正常
+
+```powershell
+git status
+git log -1 --oneline
+```
+
+#### 第二步：确认远程地址
+
+```powershell
+git remote -v
+```
+
+#### 第三步：确认 SSH 密钥文件存在
+
+```powershell
+Test-Path "$HOME\.ssh\id_ed25519_github"
+Test-Path "$HOME\.ssh\id_ed25519_github.pub"
+```
+
+两条都应该输出：
+
+```text
+True
+```
+
+#### 第四步：单独测试 GitHub 身份认证
+
+```powershell
+ssh -i "$HOME\.ssh\id_ed25519_github" -o IdentitiesOnly=yes -T -p 443 git@ssh.github.com
+```
+
+#### 第五步：检查项目使用哪把密钥
+
+```powershell
+git config --get core.sshCommand
+```
+
+#### 第六步：确认远程仓库可以读取
+
+```powershell
+git ls-remote origin
+```
+
+#### 第七步：最后再推送
+
+```powershell
+git push
+```
+
+### 13. 本次最重要的经验
+
+1. 安装 Git 后要重启 VS Code，让 PATH 生效。
+2. `.git` 空目录不等于有效 Git 仓库。
+3. `git commit` 成功只代表本地保存成功，不代表已经上传 GitHub。
+4. `Failed to connect` 是网络问题，不要通过乱改代码解决。
+5. `Permission denied (publickey)` 说明 SSH 服务器能连接，但身份认证失败。
+6. GitHub SSH Key 页面只能添加 `.pub` 公钥，不能添加私钥。
+7. HTTPS 443 不通时，可以测试 `ssh.github.com:443`。
+8. `successfully authenticated` 才是 SSH 身份验证成功的关键提示。
+9. 首次推送用 `git push -u origin main`，以后只需要 `git push`。
+10. 不要把 Token 或 SSH 私钥写进教程、聊天记录或 Git 仓库。
 
 ---
 
