@@ -13,7 +13,7 @@ function updateHeader() {
 menuToggle.addEventListener("click", () => {
   header.classList.toggle("is-open");
   const isOpen = header.classList.contains("is-open");
-  menuToggle.setAttribute("aria-label", isOpen ? "關閉選單" : "打開選單");
+  menuToggle.setAttribute("aria-label", isOpen ? "关闭菜单" : "打开菜单");
 });
 
 navLinks.forEach((link) => {
