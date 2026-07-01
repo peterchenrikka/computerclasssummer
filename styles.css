@@ -312,8 +312,8 @@ h3 {
 }
 
 .plans-band {
-  color: var(--white);
-  background: #162231;
+  color: var(--ink);
+  background: #d8f1ff;
 }
 
 .intro-layout,
